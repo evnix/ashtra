@@ -10,7 +10,7 @@ type QProc struct {
 }
 
 
-func(q* QProc)  Start() int{
+func(q* QProc)  Start(string Qname) int{
 
 	c := make(chan int)
 	quit := make(chan int)
