@@ -1,0 +1,1 @@
+go test qfileop_test.go qfileop.go
