@@ -5,6 +5,10 @@ import ("testing")
 func TestCreate(t *testing.T){
 
 
-	CreateQueueMetaFile("testq",10)
+	CreateMetaFile("testq",10)
+
+	qfp:= QFileOp{};
+
+	qfp.OpenMetaFile("testq")
 
 }
