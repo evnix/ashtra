@@ -1,1 +1,1 @@
-go test qfileop_test.go qfileop.go
+go test -v qfileop_test.go qfileop.go 
