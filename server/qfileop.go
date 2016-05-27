@@ -53,7 +53,9 @@ func (m* QFileOp) OpenMetaFile(filepath string){
     pushFP.Read(data)
 
 
-    objPush :=  BuildPushStruct(data)
+    objPush,res :=  BuildPushStruct(data)
+
+    fmt.Println(res)
 
     objPush =objPush
 
@@ -70,28 +72,47 @@ func (m* QFileOp) OpenMetaFile(filepath string){
 
 }
 
-func BuildPushStruct(data []byte) PushStruct{
+func BuildPushStruct(data []byte) (PushStruct,bool) {
 
 
-	ps1:= PushStruct{}
+	evenPS:= PushStruct{}
 	pushHeadbin := data[16:64]
-	ps1.crc32 = binhelp.Bin_to_int64(pushHeadbin[0:8])
-	ps1.pushId = binhelp.Bin_to_int64(pushHeadbin[8:16])
-	ps1.pushCount = binhelp.Bin_to_int64(pushHeadbin[16:24])
+	evenPS.crc32 = binhelp.Bin_to_int64(pushHeadbin[0:8])
+	evenPS.pushId = binhelp.Bin_to_int64(pushHeadbin[8:16])
+	evenPS.pushCount = binhelp.Bin_to_int64(pushHeadbin[16:24])
 
 	fmt.Println( int64(crc32.ChecksumIEEE(pushHeadbin[8:24])))
-	fmt.Println(ps1.crc32)
+	fmt.Println(evenPS.crc32)
 
-	ps2:= PushStruct{}
-	ps2.crc32 = binhelp.Bin_to_int64(pushHeadbin[24:32])
-	ps2.pushId = binhelp.Bin_to_int64(pushHeadbin[32:40])
-	ps2.pushCount = binhelp.Bin_to_int64(pushHeadbin[40:48])	
+	oddPS:= PushStruct{}
+	oddPS.crc32 = binhelp.Bin_to_int64(pushHeadbin[24:32])
+	oddPS.pushId = binhelp.Bin_to_int64(pushHeadbin[32:40])
+	oddPS.pushCount = binhelp.Bin_to_int64(pushHeadbin[40:48])	
 
+	if(ValidCRC32(evenPS.crc32,pushHeadbin[8:24]) && evenPS.pushId > oddPS.pushId){
 
-    fmt.Println((ps2.crc32))
-    //fmt.Println(len(pushHeadbin))
+		return evenPS,true
 
-    return ps1;
+	} else if(ValidCRC32(oddPS.crc32,pushHeadbin[32:48]) && oddPS.pushId > evenPS.pushId){
+
+		return oddPS,true
+
+	} else if(ValidCRC32(evenPS.crc32,pushHeadbin[8:24]) && ValidCRC32(oddPS.crc32,pushHeadbin[32:48]) && evenPS.pushId == oddPS.pushId){
+
+		return oddPS,true
+
+	} else if (ValidCRC32(evenPS.crc32,pushHeadbin[8:24])){
+
+		return evenPS,true
+
+	} else if(ValidCRC32(oddPS.crc32,pushHeadbin[32:48])){
+
+		return oddPS,true
+
+	} else{
+
+		return evenPS,false
+	}
 
 
 
