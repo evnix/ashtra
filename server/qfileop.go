@@ -5,6 +5,7 @@ import ("io/ioutil"
 		"github.com/evnix/ashtra/server/binhelp"
 		"hash/crc32"
 		"errors"
+		"strconv"
 		)
 
 
@@ -12,22 +13,25 @@ var version int64 = 1
 var minSupportedVersion int64 = 1
 
 type QFileOp struct {
-   
-   pushId int64
-   pushCount int64
-   pushFP* os.File
-   pushDataFP* os.File
-   prevShard int64
-   currentShard int64
 
 
-   popId int64
-   popCount int64
-   headOffset int64
-   popFP* os.File
+	filePath string
+
+	pushId int64
+	pushCount int64
+	pushFP* os.File
+	pushDataFP* os.File
+	prevShard int64
+	currentShard int64
 
 
-   recordsPerShard int64
+	popId int64
+	popCount int64
+	headOffset int64
+	popFP* os.File
+
+
+	recordsPerShard int64
 
 }
 
@@ -56,11 +60,20 @@ func (m* QFileOp) PushElement(data []byte)  (error) {
 
 	fmt.Println("strting push")
 
+	var err error
 	m.currentShard = m.pushCount / m.recordsPerShard
 
-	if(m.pushDataFP == nil || m.currentShard!=m.prevShard){
+	if(m.currentShard!=m.prevShard || m.pushDataFP == nil){
 
 		m.prevShard = m.currentShard
+		filepath := m.filePath+"-"+strconv.FormatInt(m.currentShard,10)+".data" 
+		m.pushDataFP, err = os.OpenFile(filepath, os.O_APPEND|os.O_CREATE,0777)
+
+		if err!=nil {
+
+			return errors.New("Error opening the data file: "+filepath)
+
+		}
 
 	}
 	
@@ -70,6 +83,10 @@ func (m* QFileOp) PushElement(data []byte)  (error) {
 
 func (m* QFileOp) OpenMetaFile(filepath string) (error) {
 
+
+	m.filePath = filepath
+
+	filepath = filepath+".meta"
 	
 
 	data := make([]byte, 128)
@@ -243,6 +260,8 @@ func ValidCRC32(numcrc32 int64, data []byte) bool{
 func CreateMetaFile(filepath string,  recordsPerShard int64){
 
 	//var version int64 = 1
+
+	filepath = filepath+".meta"
 		
 	//Even Push ID 64 bits + Push Count 64 bits
 	pushHeaderPart := append(binhelp.Int64_to_bin(0),binhelp.Int64_to_bin(0)...)
