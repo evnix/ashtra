@@ -18,7 +18,6 @@ type QFileOp struct {
 	filePath string
 
 	pushId int64
-	pushCount int64
 	pushFP* os.File
 	pushDataFP* os.File
 	prevShard int64
@@ -26,7 +25,6 @@ type QFileOp struct {
 
 
 	popId int64
-	popCount int64
 	headOffset int64
 	popFP* os.File
 
@@ -41,7 +39,6 @@ type PushStruct struct{
 
 	crc32 int64
 	pushId int64
-    pushCount int64
 
 
 }
@@ -50,13 +47,24 @@ type PopStruct struct{
 
 	crc32 int64
 	popId int64
-	popCount int64
     headOffset int64
 	
 }
 
 
-func (m* QFileOp) PushElement(data []byte)  (error) {
+func CreateRecord(errorCount int32, expires int64, deleted int8, data []byte) ([]byte){
+
+	var dataLength int64 = int64(len(data))
+	T0 := append(binhelp.Int32_to_bin(errorCount),binhelp.Int64_to_bin(expires)...)
+	T1 := append(T0,binhelp.Int8_to_bin(deleted)...)
+	T2 := append(T1,binhelp.Int64_to_bin(dataLength)...)
+	T3 := append(T2,data...)
+	return T3
+
+
+}
+
+func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data []byte)  (error) {
 
 	fmt.Println("strting push")
 
@@ -67,7 +75,7 @@ func (m* QFileOp) PushElement(data []byte)  (error) {
 
 		m.prevShard = m.currentShard
 		filepath := m.filePath+"-"+strconv.FormatInt(m.currentShard,10)+".data" 
-		m.pushDataFP, err = os.OpenFile(filepath, os.O_APPEND|os.O_CREATE,0777)
+		m.pushDataFP, err = os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY,0777)
 
 		if err!=nil {
 
@@ -77,9 +85,16 @@ func (m* QFileOp) PushElement(data []byte)  (error) {
 
 	}
 	
+	recordBin := CreateRecord(errorCount, expires, deleted, data)
+	m.pushDataFP.Write(recordBin)
+
+	m.pushId++
+
+
+
 	return nil
 
-}
+}	
 
 func (m* QFileOp) OpenMetaFile(filepath string) (error) {
 
@@ -89,7 +104,7 @@ func (m* QFileOp) OpenMetaFile(filepath string) (error) {
 	filepath = filepath+".meta"
 	
 
-	data := make([]byte, 128)
+	data := make([]byte, 96)
 
 	pushFP, err1 := os.OpenFile(filepath, os.O_RDWR,0777);
 	popFP, err2 := os.OpenFile(filepath, os.O_RDWR,0777);
@@ -263,37 +278,37 @@ func CreateMetaFile(filepath string,  recordsPerShard int64){
 
 	filepath = filepath+".meta"
 		
-	//Even Push ID 64 bits + Push Count 64 bits
-	pushHeaderPart := append(binhelp.Int64_to_bin(0),binhelp.Int64_to_bin(0)...)
+	//Even Push ID 64 bits 
+	pushHeaderPart := binhelp.Int64_to_bin(0)
 	pushHeaderCRC32 := int64(crc32.ChecksumIEEE(pushHeaderPart))
 
-	//CRC32+00000000+00000000
+	//CRC32+00000000
 	pushHeader_part := append(binhelp.Int64_to_bin(pushHeaderCRC32), pushHeaderPart...)
 
-	//CRC32+00000000+00000000 + CRC32+00000000+00000000
+	//CRC32+00000000 + CRC32+00000000
 	pushHeader := append(pushHeader_part,pushHeader_part...)
 
-	//00000000+00000000+00000000
-	popHeaderPart := append(binhelp.Int64_to_bin(0),pushHeaderPart...)
+	//00000000+00000000
+	popHeaderPart := append(pushHeaderPart,pushHeaderPart...)
 	popHeaderCRC32 := int64(crc32.ChecksumIEEE(popHeaderPart))
 
-	//CRC32+00000000+00000000+00000000
+	//CRC32+00000000+00000000
 	popHeader_part := append(binhelp.Int64_to_bin(popHeaderCRC32), popHeaderPart...)
 
-	//CRC32+00000000+00000000+00000000  +  CRC32+00000000+00000000+00000000
+	//CRC32+00000000+00000000 +  CRC32+00000000+00000000
 	popHeader := append(popHeader_part,popHeader_part...)
 
 	//Version+RecordsPerShard
 	metaStart := append(binhelp.Int64_to_bin(version),binhelp.Int64_to_bin(recordsPerShard)...)
 
-	//CRC32+00000000+00000000 + CRC32+00000000+00000000
-	//CRC32+00000000+00000000+00000000  +  CRC32+00000000+00000000+00000000
+	//CRC32+00000000 + CRC32+00000000
+	//CRC32+00000000+00000000  +  CRC32+00000000+00000000
 	header_part := append(pushHeader,popHeader...)
 
 	/* Here we have the complete Header file */
 	//Version+RecordsPerShard
-	//CRC32+00000000+00000000 + CRC32+00000000+00000000
-	//CRC32+00000000+00000000+00000000  +  CRC32+00000000+00000000+00000000
+	//CRC32+00000000 + CRC32+00000000
+	//CRC32+00000000+00000000  +  CRC32+00000000+00000000
 	header := append(metaStart,header_part...)
 
 	ioutil.WriteFile(filepath, header, os.ModeAppend | 0777)

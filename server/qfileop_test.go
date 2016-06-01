@@ -18,7 +18,7 @@ func TestCreate(t *testing.T){
 	}
 
 
-	ret2 := qfp.PushElement([]byte("hello"))
+	ret2 := qfp.PushElement(1,2,3,[]byte("hello"))
 
 	if(ret2!=nil){
 
