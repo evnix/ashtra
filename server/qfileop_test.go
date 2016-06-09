@@ -18,14 +18,28 @@ func TestCreate(t *testing.T){
 	}
 
 
-	ret2 := qfp.PushElement(1,2,3,[]byte("hello"))
+
+	var ret2 error
+
+
+	//for i:=0;i<100;i++ {
+
+		ret2 = qfp.PushElement(1,2,3,[]byte("hello"))
+
+	//}
+
 
 	if(ret2!=nil){
 
 		panic(ret2)
 	}
 
+		qfp.PopElement()
+
 
 }
+
+
+
 
 

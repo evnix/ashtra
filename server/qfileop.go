@@ -20,14 +20,16 @@ type QFileOp struct {
 	pushId int64
 	pushFP* os.File
 	pushDataFP* os.File
-	prevShard int64
-	currentShard int64
+	prevPushShard int64
+	currentPushShard int64
 
 
 	popId int64
 	headOffset int64
 	popFP* os.File
-
+	popDataFP* os.File
+	prevPopShard int64
+	currentPopShard int64
 
 	recordsPerShard int64
 
@@ -51,8 +53,23 @@ type PopStruct struct{
 	
 }
 
+type Record struct {
 
-func CreateRecord(errorCount int32, expires int64, deleted int8, data []byte) ([]byte){
+	errorCount int32
+	expires int64
+	data []byte
+
+}
+
+func CreatePushHeader(pushId int64) ([]byte){
+
+
+		pushIdBin := binhelp.Int64_to_bin(pushId)
+		pushHeaderCRC32 := int64(crc32.ChecksumIEEE(pushIdBin))
+		return append(binhelp.Int64_to_bin(pushHeaderCRC32),pushIdBin...)
+}
+
+func CreateRecordBin(errorCount int32, expires int64, deleted int8, data []byte) ([]byte){
 
 	var dataLength int64 = int64(len(data))
 	T0 := append(binhelp.Int32_to_bin(errorCount),binhelp.Int64_to_bin(expires)...)
@@ -64,33 +81,106 @@ func CreateRecord(errorCount int32, expires int64, deleted int8, data []byte) ([
 
 }
 
+
+
+func (m* QFileOp) PopElement() (error,int,Record){
+
+	fmt.Println("pping")
+	
+	if(m.popId == m.pushId){
+
+		return nil,0,Record{}
+	}
+
+
+	m.currentPopShard = m.popId / m.recordsPerShard
+
+	var err error
+	if(m.currentPopShard!=m.prevPopShard || m.popDataFP == nil){
+
+
+
+		m.prevPopShard = m.currentPopShard
+		filepath := m.filePath+"-"+strconv.FormatInt(m.currentPopShard,10)+".data" 
+		fmt.Println(filepath)
+
+		m.popDataFP, err = os.OpenFile(filepath,os.O_CREATE|os.O_RDWR,0777)
+
+		if err!=nil {
+
+			panic(err)
+
+			return errors.New("onPop Error opening the data file: "+filepath),0,Record{}
+
+		}
+
+		m.headOffset = 0
+
+	}
+
+	m.popDataFP.Seek(m.headOffset,0)
+
+
+	RecordMetaBin := make([]byte, 21)
+	m.popDataFP.Read(RecordMetaBin)
+	dataLength := binhelp.Bin_to_int64(RecordMetaBin[13:21])
+	RecordDataBin := make([]byte, dataLength)
+	m.popDataFP.Read(RecordDataBin)
+	fmt.Println(string(RecordDataBin))
+
+
+
+
+	m.popId++
+
+
+	return nil,0,Record{}
+}
+
 func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data []byte)  (error) {
 
 	fmt.Println("strting push")
 
 	var err error
-	m.currentShard = m.pushCount / m.recordsPerShard
+	m.currentPushShard = m.pushId / m.recordsPerShard
 
-	if(m.currentShard!=m.prevShard || m.pushDataFP == nil){
+	if(m.currentPushShard!=m.prevPushShard || m.pushDataFP == nil){
 
-		m.prevShard = m.currentShard
-		filepath := m.filePath+"-"+strconv.FormatInt(m.currentShard,10)+".data" 
+		m.prevPushShard = m.currentPushShard
+		filepath := m.filePath+"-"+strconv.FormatInt(m.currentPushShard,10)+".data" 
 		m.pushDataFP, err = os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY,0777)
 
 		if err!=nil {
 
-			return errors.New("Error opening the data file: "+filepath)
+			return errors.New("onPush Error opening the data file: "+filepath)
 
 		}
 
+
+
 	}
 	
-	recordBin := CreateRecord(errorCount, expires, deleted, data)
+	recordBin := CreateRecordBin(errorCount, expires, deleted, data)
 	m.pushDataFP.Write(recordBin)
 
 	m.pushId++
 
+	var pushHeaderOffset int64
 
+	if(m.pushId % 2 == 0){
+
+		pushHeaderOffset = 16
+
+	} else {
+
+		pushHeaderOffset = 32
+
+	}
+
+
+	m.pushFP.Seek(pushHeaderOffset,0)
+	pushHeader := CreatePushHeader(m.pushId)
+	m.pushFP.Write(pushHeader)
 
 	return nil
 
@@ -103,7 +193,7 @@ func (m* QFileOp) OpenMetaFile(filepath string) (error) {
 
 	filepath = filepath+".meta"
 	
-
+	//current size of header file
 	data := make([]byte, 96)
 
 	pushFP, err1 := os.OpenFile(filepath, os.O_RDWR,0777);
@@ -145,9 +235,7 @@ func (m* QFileOp) OpenMetaFile(filepath string) (error) {
 
 
     m.pushId = objPush.pushId
-    m.pushCount = objPush.pushCount
     m.popId = objPop.popId
-    m.popCount = objPop.popCount
     m.headOffset = objPop.headOffset
 
 
@@ -165,26 +253,25 @@ func BuildPopStruct(data []byte) (PopStruct,bool) {
 
 
 	evenPS:= PopStruct{}
-	popHeadbin := data[64:128]
+	popHeadbin := data[48:96]
 	evenPS.crc32 = binhelp.Bin_to_int64(popHeadbin[0:8])
 	evenPS.popId = binhelp.Bin_to_int64(popHeadbin[8:16])
-	evenPS.popCount = binhelp.Bin_to_int64(popHeadbin[16:24])
-	evenPS.headOffset = binhelp.Bin_to_int64(popHeadbin[24:32])
+	evenPS.headOffset = binhelp.Bin_to_int64(popHeadbin[16:24])
+	
 
-
-	evenData := popHeadbin[8:32]
+	evenData := popHeadbin[8:24]
 
 	// fmt.Println( int64(crc32.ChecksumIEEE(evenData)))
 	// fmt.Println(evenPS.crc32)
 
 
 	oddPS:= PopStruct{}
-	oddPS.crc32 = binhelp.Bin_to_int64(popHeadbin[32:40])
-	oddPS.popId = binhelp.Bin_to_int64(popHeadbin[40:48])
-	oddPS.popCount = binhelp.Bin_to_int64(popHeadbin[48:56])	
-	oddPS.headOffset = binhelp.Bin_to_int64(popHeadbin[56:64])
+	oddPS.crc32 = binhelp.Bin_to_int64(popHeadbin[24:32])
+	oddPS.popId = binhelp.Bin_to_int64(popHeadbin[32:40])
+	oddPS.headOffset = binhelp.Bin_to_int64(popHeadbin[40:48])	
 
-	oddData := popHeadbin[40:64]
+
+	oddData := popHeadbin[32:48]
 
 
 	// fmt.Println( int64(crc32.ChecksumIEEE(oddData)))
@@ -223,36 +310,39 @@ func BuildPushStruct(data []byte) (PushStruct,bool) {
 
 
 	evenPS:= PushStruct{}
-	pushHeadbin := data[16:64]
+	pushHeadbin := data[16:48]
 	evenPS.crc32 = binhelp.Bin_to_int64(pushHeadbin[0:8])
 	evenPS.pushId = binhelp.Bin_to_int64(pushHeadbin[8:16])
-	evenPS.pushCount = binhelp.Bin_to_int64(pushHeadbin[16:24])
+
+	evenData := pushHeadbin[8:16]
 
 	// fmt.Println( int64(crc32.ChecksumIEEE(pushHeadbin[8:24])))
 	// fmt.Println(evenPS.crc32)
 
 	oddPS:= PushStruct{}
-	oddPS.crc32 = binhelp.Bin_to_int64(pushHeadbin[24:32])
-	oddPS.pushId = binhelp.Bin_to_int64(pushHeadbin[32:40])
-	oddPS.pushCount = binhelp.Bin_to_int64(pushHeadbin[40:48])	
+	oddPS.crc32 = binhelp.Bin_to_int64(pushHeadbin[16:24])
+	oddPS.pushId = binhelp.Bin_to_int64(pushHeadbin[24:32])
 
-	if(ValidCRC32(evenPS.crc32,pushHeadbin[8:24]) && evenPS.pushId > oddPS.pushId){
 
-		return evenPS,true
+	oddData := pushHeadbin[24:32]
 
-	} else if(ValidCRC32(oddPS.crc32,pushHeadbin[32:48]) && oddPS.pushId > evenPS.pushId){
-
-		return oddPS,true
-
-	} else if(ValidCRC32(evenPS.crc32,pushHeadbin[8:24]) && ValidCRC32(oddPS.crc32,pushHeadbin[32:48]) && evenPS.pushId == oddPS.pushId){
-
-		return oddPS,true
-
-	} else if (ValidCRC32(evenPS.crc32,pushHeadbin[8:24])){
+	if(ValidCRC32(evenPS.crc32,evenData) && evenPS.pushId > oddPS.pushId){
 
 		return evenPS,true
 
-	} else if(ValidCRC32(oddPS.crc32,pushHeadbin[32:48])){
+	} else if(ValidCRC32(oddPS.crc32,oddData) && oddPS.pushId > evenPS.pushId){
+
+		return oddPS,true
+
+	} else if(ValidCRC32(evenPS.crc32,evenData) && ValidCRC32(oddPS.crc32,oddData) && evenPS.pushId == oddPS.pushId){
+
+		return oddPS,true
+
+	} else if (ValidCRC32(evenPS.crc32,evenData)){
+
+		return evenPS,true
+
+	} else if(ValidCRC32(oddPS.crc32,oddData)){
 
 		return oddPS,true
 
