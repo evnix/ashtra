@@ -3,6 +3,7 @@ import ("io/ioutil"
 		"os"
 		"fmt"
 		"github.com/evnix/ashtra/server/binhelp"
+		"github.com/satori/go.uuid"
 		"hash/crc32"
 		"errors"
 		"strconv"
@@ -55,8 +56,10 @@ type PopStruct struct{
 
 type Record struct {
 
+	uid string
 	errorCount int32
 	expires int64
+	deleted int8
 	data []byte
 
 }
@@ -69,27 +72,39 @@ func CreatePushHeader(pushId int64) ([]byte){
 		return append(binhelp.Int64_to_bin(pushHeaderCRC32),pushIdBin...)
 }
 
-func CreateRecordBin(errorCount int32, expires int64, deleted int8, data []byte) ([]byte){
+func CreatePopHeader(popId int64, headOffset int64) ([]byte){
+
+
+		popBin := append(binhelp.Int64_to_bin(popId),binhelp.Int64_to_bin(headOffset)...)
+		popHeaderCRC32 := int64(crc32.ChecksumIEEE(popBin))
+		return append(binhelp.Int64_to_bin(popHeaderCRC32),popBin...)
+}
+
+
+
+func CreateRecordBin(errorCount int32, expires int64, deleted int8, data []byte) ([]byte,string){
 
 	var dataLength int64 = int64(len(data))
+	uid := uuid.NewV4().String()
 	T0 := append(binhelp.Int32_to_bin(errorCount),binhelp.Int64_to_bin(expires)...)
 	T1 := append(T0,binhelp.Int8_to_bin(deleted)...)
-	T2 := append(T1,binhelp.Int64_to_bin(dataLength)...)
-	T3 := append(T2,data...)
-	return T3
+	T2 := append(T1,[]byte(uid)...)
+	T3 := append(T2,binhelp.Int64_to_bin(dataLength)...)
+	T4 := append(T3,data...)
+	return T4,uid
 
 
 }
 
 
 
-func (m* QFileOp) PopElement() (error,int,Record){
+func (m* QFileOp) PopElement() (error,Record){
 
-	fmt.Println("pping")
+	
 	
 	if(m.popId == m.pushId){
 
-		return nil,0,Record{}
+		return nil,Record{}
 	}
 
 
@@ -100,9 +115,15 @@ func (m* QFileOp) PopElement() (error,int,Record){
 
 
 
+		if(m.currentPopShard!=m.prevPopShard ){
+
+			m.headOffset = 0
+		}
+
+
 		m.prevPopShard = m.currentPopShard
 		filepath := m.filePath+"-"+strconv.FormatInt(m.currentPopShard,10)+".data" 
-		fmt.Println(filepath)
+		//fmt.Println(filepath)
 
 		m.popDataFP, err = os.OpenFile(filepath,os.O_CREATE|os.O_RDWR,0777)
 
@@ -110,36 +131,64 @@ func (m* QFileOp) PopElement() (error,int,Record){
 
 			panic(err)
 
-			return errors.New("onPop Error opening the data file: "+filepath),0,Record{}
+			return errors.New("onPop Error opening the data file: "+filepath),Record{}
 
 		}
 
-		m.headOffset = 0
+		
 
 	}
 
 	m.popDataFP.Seek(m.headOffset,0)
 
 
-	RecordMetaBin := make([]byte, 21)
+	record := Record{}
+	RecordMetaBin := make([]byte, 57)
 	m.popDataFP.Read(RecordMetaBin)
-	dataLength := binhelp.Bin_to_int64(RecordMetaBin[13:21])
-	RecordDataBin := make([]byte, dataLength)
-	m.popDataFP.Read(RecordDataBin)
-	fmt.Println(string(RecordDataBin))
+	dataLength := binhelp.Bin_to_int64(RecordMetaBin[49:57])
+	record.data = make([]byte, dataLength)
+	m.popDataFP.Read(record.data)
 
 
+	record.errorCount = (binhelp.Bin_to_int32(RecordMetaBin[0:4]))
+	record.expires = (binhelp.Bin_to_int64(RecordMetaBin[4:12]))
+	record.deleted = (binhelp.Bin_to_int8(RecordMetaBin[12:13]))
+	record.uid = (string(RecordMetaBin[13:49]))
 
 
 	m.popId++
+	m.headOffset = m.headOffset + int64(len(RecordMetaBin))+dataLength
 
 
-	return nil,0,Record{}
+
+
+
+	var popMetaHeaderOffset int64
+
+	if(m.popId % 2 == 0){
+
+		popMetaHeaderOffset = 48
+
+	} else {
+
+		popMetaHeaderOffset = 72
+
+	}
+
+
+
+	m.popFP.Seek(popMetaHeaderOffset,0)
+	popHeader := CreatePopHeader(m.popId,m.headOffset)
+	m.popFP.Write(popHeader)
+
+
+
+	return nil,record
 }
 
-func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data []byte)  (error) {
+func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data []byte)  (error,string) {
 
-	fmt.Println("strting push")
+
 
 	var err error
 	m.currentPushShard = m.pushId / m.recordsPerShard
@@ -152,7 +201,7 @@ func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data
 
 		if err!=nil {
 
-			return errors.New("onPush Error opening the data file: "+filepath)
+			return errors.New("onPush Error opening the data file: "+filepath),""
 
 		}
 
@@ -160,7 +209,7 @@ func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data
 
 	}
 	
-	recordBin := CreateRecordBin(errorCount, expires, deleted, data)
+	recordBin,uid := CreateRecordBin(errorCount, expires, deleted, data)
 	m.pushDataFP.Write(recordBin)
 
 	m.pushId++
@@ -182,7 +231,7 @@ func (m* QFileOp) PushElement(errorCount int32, expires int64, deleted int8,data
 	pushHeader := CreatePushHeader(m.pushId)
 	m.pushFP.Write(pushHeader)
 
-	return nil
+	return nil,uid
 
 }	
 
@@ -237,6 +286,8 @@ func (m* QFileOp) OpenMetaFile(filepath string) (error) {
     m.pushId = objPush.pushId
     m.popId = objPop.popId
     m.headOffset = objPop.headOffset
+
+    m.prevPopShard = m.popId/m.recordsPerShard
 
 
     //assign file pointers
@@ -362,6 +413,33 @@ func ValidCRC32(numcrc32 int64, data []byte) bool{
 
 }
 
+
+func (m* QFileOp) Close(){
+
+
+	if(m.pushFP!=nil){
+
+		m.pushFP.Close()
+	}
+	
+	if(m.pushDataFP!=nil){
+
+		m.pushDataFP.Close()
+	}
+	
+
+	if(m.popFP!=nil){
+
+		m.popFP.Close()
+	}
+
+	if(m.popDataFP!=nil){
+
+		m.popDataFP.Close()
+	}
+
+}
+
 func CreateMetaFile(filepath string,  recordsPerShard int64){
 
 	//var version int64 = 1
@@ -401,7 +479,7 @@ func CreateMetaFile(filepath string,  recordsPerShard int64){
 	//CRC32+00000000+00000000  +  CRC32+00000000+00000000
 	header := append(metaStart,header_part...)
 
-	ioutil.WriteFile(filepath, header, os.ModeAppend | 0777)
+	ioutil.WriteFile(filepath, header,  0777)
 
 }
 

@@ -38,3 +38,21 @@ func Bin_to_int64(data []byte) int64 {
 	return myint
 
 }
+
+func Bin_to_int32(data []byte) int32 {
+
+	var myint int32
+	buf := bytes.NewBuffer(data)
+	binary.Read(buf, binary.BigEndian, &myint)
+	return myint
+
+}
+
+func Bin_to_int8(data []byte) int8 {
+
+	var myint int8
+	buf := bytes.NewBuffer(data)
+	binary.Read(buf, binary.BigEndian, &myint)
+	return myint
+
+}
