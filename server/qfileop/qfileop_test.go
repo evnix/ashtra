@@ -1,6 +1,8 @@
-package server
+package qfileop
 import ("testing"
-		"fmt")
+		"fmt"
+		"time"
+		"log")
 
 
 func TestCreate(t *testing.T){
@@ -68,7 +70,51 @@ fmt.Println("popping...")
 }
 
 
-func TestCreate1000(t *testing.T){
+
+
+func TestPerfinsert(t *testing.T){
+
+
+	fmt.Println("testing PerfInsert...")
+
+	num:=1000000
+
+	CreateMetaFile("test/testPerf",int64(num))
+
+	qfp:= QFileOp{};
+
+	ret := qfp.OpenMetaFile("test/testPerf")
+
+
+	if(ret!=nil){
+
+		panic(ret)
+	}
+
+
+
+    start := time.Now()
+
+	for i:=0;i<num;i++ {
+
+		 qfp.PushElement(1,2,3,[]byte("hello"))
+
+	}
+
+
+
+    elapsed := time.Since(start)
+	log.Printf("took %s", elapsed)
+
+
+	
+
+}
+
+
+
+
+func mTestCreate1000(t *testing.T){
 
 
 	fmt.Println("testing...")

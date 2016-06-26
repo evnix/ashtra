@@ -1,4 +1,4 @@
-package server
+package qfileop
 import ("io/ioutil"
 		"os"
 		"fmt"
