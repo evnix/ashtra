@@ -1,37 +1,33 @@
 package server
-import ("testing"
-		//"fmt"
-		"time")
+
+import (
+	"testing"
+	//"fmt"
+	"time"
+)
+
 //import "fmt"
 
+func TestStart(t *testing.T) {
 
+	var a = 1
 
-func TestStart(t *testing.T){
-
-	var  a=1;
-
-	proc := QProc{}	
+	proc := QProc{}
 	proc.Start()
-	a++;
+	a++
 
-	time.Sleep(10*time.Second)
+	time.Sleep(10 * time.Second)
 
 	//fmt.Println("before push")
 	proc.Push()
 
-
-
-		time.Sleep(10*time.Second)
+	time.Sleep(10 * time.Second)
 }
-
 
 // func TestPush(){
 
 // }
 
-
 // func TestPop(){
 
 // }
-
-

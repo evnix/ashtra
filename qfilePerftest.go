@@ -1,61 +1,85 @@
 package main
 
-import ("github.com/evnix/ashtra/server/qfileop"
-	"log"
+import (
 	"fmt"
-	"time")
+	"github.com/evnix/ashtra/server/qfileop"
+	"log"
+	"time"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"io/ioutil"
+)
 
+//
 
-func main(){
+func main() {
 
 	fmt.Println("testing BigFastQueue PerfInsert...")
+	
+	b, err := ioutil.ReadFile(os.Args[1]) 
 
-	num:=1000000
+    if err != nil {
+    
+        fmt.Println("error occured");
+        log.Printf("error opening file")
+    }
+    
+	doWork(b)
 
-	qfileop.CreateMetaFile("test/testPerf",int64(num))
 
-	qfp:= qfileop.QFileOp{};
+
+}
+
+func doWork(workload []byte){
+
+    	num := 1000000
+
+	qfileop.CreateMetaFile("test/testPerf", int64(num))
+
+	qfp := qfileop.QFileOp{}
 
 	ret := qfp.OpenMetaFile("test/testPerf")
 
-
-
-	if(ret!=nil){
+	if ret != nil {
 
 		panic(ret)
 	}
 
+	for m := 0; m < 20; m++ {
 
-	for m:=0;m<10;m++ {
+		start := time.Now()
 
-	    start := time.Now()
+		for i := 0; i < num; i++ {
 
-		for i:=0;i<num;i++ {
-
-			 qfp.PushElement(1,2,3,[]byte("hello"))
-
-		}
-
-
-
-	    elapsed := time.Since(start)
-		log.Printf("push took %s", elapsed)
-
-
-		    start = time.Now()
-
-		for i:=0;i<num;i++ {
-
-			 qfp.PopElement()
+			qfp.PushElement(1, 2, 3, workload)
 
 		}
 
+		elapsed := time.Since(start)
+		log.Printf("%d push took %s", m,elapsed)
+        fmt.Println("push took ", elapsed)
 
+		runtime.GC()
+		debug.FreeOSMemory()
+		time.Sleep(1 * time.Second)
 
-	    elapsed = time.Since(start)
+		start = time.Now()
+
+		for i := 0; i < num; i++ {
+
+			qfp.PopElement()
+
+		}
+
+		elapsed = time.Since(start)
 		log.Printf("pop took %s", elapsed)
-	
+		fmt.Println("pop took ", elapsed)
+		runtime.GC()
+		debug.FreeOSMemory()
+		time.Sleep(1 * time.Second)
+
 	}
 
-}
 
+}
