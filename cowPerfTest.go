@@ -26,15 +26,16 @@ func main() {
         log.Printf("error opening file")
     }
     
-	doWork(b)
+    num,_ := strconv.ParseInt(os.Args[2], 10, 64)
+	doWork(b,num)
 
 
 
 }
 
-func doWork(workload []byte){
+func doWork(workload []byte,num int64){
 
-    	num := 500000
+    var i int64
 
     db, err := bolt.Open("test/testcow.db", 0777, nil)
     if err != nil {
@@ -61,7 +62,7 @@ func doWork(workload []byte){
 		start := time.Now()
 		elapsed := time.Since(start)
 
-		for i := 0; i < num; i++ {
+		for i = 0; i < num; i++ {
 		
 		
 		    if(i%10000==0){
@@ -72,7 +73,7 @@ func doWork(workload []byte){
 		    }
 
 
-                    b.Put([]byte(strconv.Itoa(i)), []byte(workload))
+                    b.Put([]byte(strconv.FormatInt(i,10)), []byte(workload))
 
 		}
 
@@ -86,7 +87,7 @@ func doWork(workload []byte){
 
 		start = time.Now()
 
-		for i := 0; i < num; i++ {
+		for i = 0; i < num; i++ {
 		
 		    if(i%1000==0){
 		    
@@ -94,7 +95,7 @@ func doWork(workload []byte){
 		            log.Printf("%d process at ... %f", i,elapsed.Seconds())
 		    }
 
-			b.Delete([]byte(strconv.Itoa(i)))
+			b.Delete([]byte(strconv.FormatInt(i,10)))
 
 		}
 
