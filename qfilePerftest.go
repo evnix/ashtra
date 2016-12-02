@@ -33,7 +33,7 @@ func main() {
 
 func doWork(workload []byte){
 
-    	num := 500000
+    	num := 100000
 
 	qfileop.CreateMetaFile("test/testPerf", int64(num))
 
