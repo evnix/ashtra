@@ -1,3 +1,5 @@
+rm test/*.db
+
 # now for 1000,000 ---------------------------------------------------------
 echo "1000,000 testing 5 bytes workload"
 ./cowPerfTest workload/5.byte 1000000 > analysis/1000000_5cow.log
