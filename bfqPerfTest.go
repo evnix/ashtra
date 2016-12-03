@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 	"os"
+	"strconv"
 	"runtime"
 	"runtime/debug"
 	"io/ioutil"
@@ -25,15 +26,16 @@ func main() {
         log.Printf("error opening file")
     }
     
-	doWork(b)
+    num,_ := strconv.ParseInt(os.Args[2], 10, 64)
+	doWork(b,num)
 
 
 
 }
 
-func doWork(workload []byte){
+func doWork(workload []byte,num int64){
 
-    	num := 100000
+    var i int64
 
 	qfileop.CreateMetaFile("test/testPerf", int64(num))
 
@@ -49,16 +51,24 @@ func doWork(workload []byte){
 	for m := 0; m < 20; m++ {
 
 		start := time.Now()
+		elapsed := time.Since(start)
 
-		for i := 0; i < num; i++ {
+		for i = 0; i < num; i++ {
+
+			if(i%10000==0){
+		    
+		    
+		            elapsed = time.Since(start)
+		            log.Printf("%d process at .. %f", i,elapsed.Seconds())
+		    }
+
 
 			qfp.PushElement(1, 2, 3, workload)
 
 		}
 
-		elapsed := time.Since(start)
 		log.Printf("%d push took %s", m,elapsed)
-        fmt.Println("push took ", elapsed)
+        fmt.Println("push took ", elapsed.Seconds())
 
 		runtime.GC()
 		debug.FreeOSMemory()
@@ -66,7 +76,14 @@ func doWork(workload []byte){
 
 		start = time.Now()
 
-		for i := 0; i < num; i++ {
+		for i = 0; i < num; i++ {
+
+
+			if(i%1000==0){
+		    
+		            elapsed = time.Since(start)
+		            log.Printf("%d process at ... %f", i,elapsed.Seconds())
+		    }
 
 			qfp.PopElement()
 
@@ -74,7 +91,7 @@ func doWork(workload []byte){
 
 		elapsed = time.Since(start)
 		log.Printf("pop took %s", elapsed)
-		fmt.Println("pop took ", elapsed)
+		fmt.Println("pop took ", elapsed.Seconds())
 		runtime.GC()
 		debug.FreeOSMemory()
 		time.Sleep(1 * time.Second)
